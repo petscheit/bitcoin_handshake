@@ -49,13 +49,13 @@ impl VersionMessage {
         sender: Address,
     ) -> VersionMessage {
         VersionMessage {
-            version: 70015,
+            version: 70001,
             services: 0,
-            timestamp: Utc::now().timestamp(),
+            timestamp: 1701707143,
             addr_recv: receiver,
             addr_from: sender,
             nonce: rand::random(),
-            user_agent: String::from("Satoshi:25.0.0"),
+            user_agent: String::from("/Satoshi:23.0.0/"),
             start_height: 0,
             relay: false,
         }
@@ -69,6 +69,7 @@ impl VersionMessage {
         payload.extend(&self.addr_recv.serialize());
         payload.extend(&self.addr_from.serialize());
         payload.extend(&self.nonce.to_le_bytes());
+        payload.extend((self.user_agent.as_bytes().len() as u8).to_le_bytes());
         payload.extend(self.user_agent.as_bytes());
         payload.extend(&self.start_height.to_le_bytes());
         payload.extend(if self.relay { &[1] } else { &[0] });
@@ -113,9 +114,14 @@ impl VersionMessage {
     }
 
     fn generate_checksum(msg: &Vec<u8>) -> Vec<u8> {
-       let mut hasher = Sha256::new();
+        let mut hasher = Sha256::new();
         hasher.update(msg);
-        // Note that calling `finalize()` consumes hasher
+        let first_hash = hasher.finalize();
+
+        // Second hash on the result of the first hash
+        let mut hasher = Sha256::new();
+        hasher.update(first_hash);
+        // Getting the first 4 bytes of the final hash
         hasher.finalize().to_vec()[0..4].to_vec()
     }
 }
