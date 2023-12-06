@@ -132,27 +132,21 @@ impl VersionMessage {
     pub fn deserialize(data: &[u8]) -> Result<VersionMessage, Error> {
         let input_len = data.len();
 
-        println!("input_len: {:?}", input_len);
-
         let (version_bytes, rest) = data.split_at(std::mem::size_of::<u32>());
         let (services_bytes, rest) = rest.split_at(std::mem::size_of::<u64>());
         let (timestamp_bytes, rest) = rest.split_at(std::mem::size_of::<i64>());
         let addr_size = NetworkAddress::min_size();
 
-        println!("addr_size: {:?}", addr_size);
         let (addr_recv_bytes, rest) = rest.split_at(addr_size);
         let (addr_from_bytes, rest) = rest.split_at(addr_size);
         let (nonce_bytes, rest) = rest.split_at(std::mem::size_of::<u64>());
         let (user_agent_len_bytes, rest) = rest.split_at(1);
         let user_agent_len = user_agent_len_bytes[0] as usize;
 
-        println!("user_agent_len: {:?}", user_agent_len);
-        println!("rest: {:?}", rest);
-
         // we now know the user agent length, so we can check the input length
-        // if input_len == Self::min_size() + &user_agent_len {
-        //     return Err(Error::DeserializeError("Data too short"));
-        // }
+        if input_len != Self::min_size() + &user_agent_len {
+            return Err(Error::DeserializeError("Invalid byte input length"));
+        }
 
         let (user_agent_bytes, rest) = rest.split_at(user_agent_len);
         let (start_height_bytes, relay_bytes) = rest.split_at(std::mem::size_of::<i32>());
@@ -204,27 +198,43 @@ pub struct MessageEnvelope {
     /// First 4 bytes of 2xsha256 of payload
     checksum: [u8; 4],
     /// Serialized command data
-    pub payload: Vec<u8>,
+    pub message: NetworkMessage,
+}
+
+#[derive(Debug)]
+pub enum NetworkMessage {
+    Version(VersionMessage),
+    Unimplemented
 }
 
 impl MessageEnvelope {
-    pub fn pack_version<T: NodeConfig>(payload: Vec<u8>) -> MessageEnvelope {
+    pub fn new<T: NodeConfig>(message: NetworkMessage) -> MessageEnvelope {
+        let (command, payload) = match &message {
+            NetworkMessage::Version(payload) => ("version", payload.serialize()),
+            NetworkMessage::Unimplemented => ("verack", vec![])
+        };
+
         MessageEnvelope {
             magic: T::MAGIC,
-            command: MessageEnvelope::generate_command_bytes("version"),
+            command: MessageEnvelope::generate_command_bytes(command),
             payload_size: payload.len() as u32,
             checksum: MessageEnvelope::generate_checksum(&payload),
-            payload,
+            message,
         }
     }
     pub fn serialize(&self) -> Vec<u8> {
-        let mut message = Vec::with_capacity(Self::min_size() + self.payload.len());
-        message.extend(&self.magic);
-        message.extend(&self.command);
-        message.extend(&self.payload_size.to_le_bytes());
-        message.extend(&self.checksum);
-        message.extend(&self.payload);
-        message
+        let payload = match &self.message {
+            NetworkMessage::Version(payload) => payload.serialize(),
+            NetworkMessage::Unimplemented => vec![]
+        };
+
+        let mut envelope = Vec::with_capacity(Self::min_size() + self.payload_size as usize);
+        envelope.extend(&self.magic);
+        envelope.extend(&self.command);
+        envelope.extend(&self.payload_size.to_le_bytes());
+        envelope.extend(&self.checksum);
+        envelope.extend(payload);
+        envelope
     }
 
     pub fn deserialize(data: &[u8]) -> Result<(MessageEnvelope, &[u8]), Error> {
@@ -241,21 +251,29 @@ impl MessageEnvelope {
 
         let magic = magic_bytes.try_into()?;
         let command = command_bytes.try_into()?;
+        let checksum = checksum_bytes.try_into()?;
         let payload_size = u32::from_le_bytes(payload_size_bytes.try_into()?);
 
-        let (payload, rest) = payload_and_rest.split_at(payload_size as usize);
+        let (payload_bytes, rest) = payload_and_rest.split_at(payload_size as usize);
+
+        // ensure the checksum matches the payload
+        if &MessageEnvelope::generate_checksum(payload_bytes) != &checksum {
+            return Err(Error::DeserializeError("Checksum mismatch"));
+        }
 
         // ensure the msg has the correct length
         if input_len - rest.len() != Self::min_size() + payload_size as usize {
             return Err(Error::DeserializeError("Invalid bytes input length"));
         }
 
-        let checksum = checksum_bytes.try_into()?;
+        let message = match &command {
+            b"version\0\0\0\0\0" => {                
+                NetworkMessage::Version(VersionMessage::deserialize(payload_bytes)?)
+            },
+            b"verack\0\0\0\0\0\0" => NetworkMessage::Unimplemented,
+            _ => NetworkMessage::Unimplemented,
+        };
 
-        // ensure the checksum matches the payload
-        if &MessageEnvelope::generate_checksum(payload) != &checksum {
-            return Err(Error::DeserializeError("Checksum mismatch"));
-        }
 
         Ok((
             MessageEnvelope {
@@ -263,7 +281,7 @@ impl MessageEnvelope {
                 command,
                 payload_size,
                 checksum,
-                payload: payload.to_vec(),
+                message,
             },
             rest,
         ))

@@ -1,8 +1,7 @@
 mod message;
 mod networking;
-use crate::message::{NetworkAddress, VersionMessage};
+use crate::message::{NetworkAddress};
 use crate::networking::Peer;
-use std::io::{BufRead, BufReader, Read};
 use std::net::{IpAddr, Ipv4Addr};
 
 #[derive(Debug)]
@@ -12,10 +11,12 @@ pub enum Error {
     ArrayError(std::array::TryFromSliceError),
     TcpError(&'static str),
     DeserializeError(&'static str),
+    InvalidInputLength,
+    InvalidChecksum,
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Error> {
     let mut peer = Peer::connect(NetworkAddress {
         services: 0,
         ip: IpAddr::V4(Ipv4Addr::new(168, 119, 68, 66)),
@@ -24,45 +25,9 @@ async fn main() {
     .await
     .unwrap();
 
-    println!("{:?}", peer);
-    let res = peer.init_handshake::<Config>().await;
-    //
-    // let assembeled_message = version_msg.assemble_message();
-    // peer.send_message(&assembeled_message).unwrap();
-    //
-    // let read_stream = peer.connection.try_clone().unwrap();
-    // let mut stream_reader = BufReader::new(read_stream);
-    //
-    // let mut buffer = Vec::new();
-    //
-    // loop {
-    //     match stream_reader.read_to_end(&mut buffer) {
-    //         Ok(0) => {
-    //             // No more data to read; you might want to break or handle this case.
-    //             continue;
-    //         },
-    //         Ok(_) => {
-    //             // Process and print the buffer content.
-    //             // The actual implementation will depend on the specifics of the Bitcoin protocol.
-    //             // For demonstration, let's just print the raw bytes.
-    //             println!("Received data: {:?}", buffer);
-    //
-    //             // Clear the buffer for the next read.
-    //             buffer.clear();
-    //         },
-    //         Err(e) => {
-    //             eprintln!("Failed to read from stream: {}", e);
-    //             break;
-    //         }
-    //     }
-    // }
+    let _res = peer.init_handshake::<Config>().await?;
 
-    // println!("{:?}", assembeled_message);
-    // match peer {
-    //     Ok(stream) => println!("Connected to peer: {:?}", stream),
-    //     Err(e) => println!("Error connecting to peer: {:?}", e),
-    // }
-    // println!("{:?}", peer);
+    Ok(())
 }
 
 pub trait NodeConfig {
