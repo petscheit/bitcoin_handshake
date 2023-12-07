@@ -7,6 +7,9 @@ use tokio::net::TcpStream;
 pub(crate) struct Peer {
     pub addr_recv: NetworkAddress,
     pub connection: TcpStream,
+    pub version: Option<VersionMessage>,
+    pub received_verack: bool,
+    pub sent_verack: bool,
 }
 
 impl Peer {
@@ -17,14 +20,16 @@ impl Peer {
         Ok(Peer {
             addr_recv: address,
             connection,
+            version: None,
+            received_verack: false,
+            sent_verack: false,
         })
     }
 
     /// Initialize the handshake with a peer
     pub async fn init_handshake<T: NodeConfig>(&mut self) -> Result<(), Error> {
         let version_msg = VersionMessage::new::<T>(self.addr_recv.clone(), self.to_addr_from()?)?;
-        let envelope = MessageEnvelope::new::<T>(NetworkMessage::Version(version_msg));
-        println!("Sending version message: {:#?}", envelope);
+        let envelope = MessageEnvelope::new::<T>(NetworkMessage::Version(version_msg))?;
         self.connection
             .write_all(&envelope.serialize())
             .await
@@ -42,18 +47,29 @@ impl Peer {
                     return Ok(());
                 }
                 let mut received_data = &buffer[..n];
-                let mut messages = vec![];
 
                 while !received_data.is_empty() {
                     let (msg, rest) = MessageEnvelope::deserialize(received_data)?;
-                    messages.push(msg);
+                    match msg.message {
+                        NetworkMessage::Version(version) => {
+                            self.version = Some(version);
+                            // respond with verack when receiving valid version
+                            let verack_envelope = MessageEnvelope::new::<T>(NetworkMessage::Verack)?;
+                            self.connection
+                                .write_all(&verack_envelope.serialize())
+                                .await?;
+                            self.sent_verack = true;
+                        }
+                        NetworkMessage::Verack => {
+                            self.received_verack = true;
+                        }
+                        NetworkMessage::Unimplemented => ()
+                    }
                     received_data = rest;
                 }
-
-                println!("Received messages: {:#?}", messages);
             }
             Err(e) => {
-                eprintln!("Failed to read from stream: {}", e);
+                return Err(e.into())
             }
         }
 

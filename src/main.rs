@@ -13,6 +13,7 @@ pub enum Error {
     DeserializeError(&'static str),
     InvalidInputLength,
     InvalidChecksum,
+    CantInitUnimplementedMessage,
 }
 
 #[tokio::main]
@@ -22,10 +23,12 @@ async fn main() -> Result<(), Error> {
         ip: IpAddr::V4(Ipv4Addr::new(168, 119, 68, 66)),
         port: 8333,
     })
-    .await
-    .unwrap();
+    .await?;
 
-    peer.init_handshake::<Config>().await?;
+    let _ = peer.init_handshake::<Config>().await?;
+    println!("Handshake completed - Received verack: {:?}, Sent verack: {:?}", peer.received_verack, peer.sent_verack);
+    println!("Peer version: {:#?}", peer.version);
+
 
     Ok(())
 }
