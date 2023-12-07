@@ -1,6 +1,6 @@
 mod message;
 mod networking;
-use crate::message::{NetworkAddress};
+use message::{NetworkAddress};
 use crate::networking::Peer;
 use std::net::{IpAddr, Ipv4Addr};
 
