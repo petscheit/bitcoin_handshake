@@ -1,7 +1,7 @@
-use sha2::{Digest, Sha256};
-use crate::{Error, NodeConfig};
-use crate::message::{Deserialize, Serialize, Size};
 use crate::message::version::VersionMessage;
+use crate::message::{Deserialize, Serialize, Size};
+use crate::{Error, NodeConfig};
+use sha2::{Digest, Sha256};
 
 /// The generic wrapper used to send messages to other nodes
 #[derive(Debug)]
@@ -21,14 +21,14 @@ pub struct MessageEnvelope {
 #[derive(Debug)]
 pub enum NetworkMessage {
     Version(VersionMessage),
-    Unimplemented
+    Unimplemented,
 }
 
 impl MessageEnvelope {
     pub fn new<T: NodeConfig>(message: NetworkMessage) -> MessageEnvelope {
         let (command, payload) = match &message {
             NetworkMessage::Version(payload) => ("version", payload.serialize()),
-            NetworkMessage::Unimplemented => ("verack", vec![])
+            NetworkMessage::Unimplemented => ("verack", vec![]),
         };
 
         MessageEnvelope {
@@ -42,7 +42,7 @@ impl MessageEnvelope {
     pub fn serialize(&self) -> Vec<u8> {
         let payload = match &self.message {
             NetworkMessage::Version(payload) => payload.serialize(),
-            NetworkMessage::Unimplemented => vec![]
+            NetworkMessage::Unimplemented => vec![],
         };
 
         let mut envelope = Vec::with_capacity(Self::min_size() + self.payload_size as usize);
@@ -57,7 +57,7 @@ impl MessageEnvelope {
     pub fn deserialize(data: &[u8]) -> Result<(MessageEnvelope, &[u8]), Error> {
         let input_len = data.len();
 
-        if &input_len < &Self::min_size() {
+        if input_len < Self::min_size() {
             return Err(Error::DeserializeError("Invalid bytes input length"));
         }
 
@@ -74,7 +74,7 @@ impl MessageEnvelope {
         let (payload_bytes, rest) = payload_and_rest.split_at(payload_size as usize);
 
         // ensure the checksum matches the payload
-        if &MessageEnvelope::generate_checksum(payload_bytes) != &checksum {
+        if MessageEnvelope::generate_checksum(payload_bytes) != checksum {
             return Err(Error::DeserializeError("Checksum mismatch"));
         }
 
@@ -86,7 +86,7 @@ impl MessageEnvelope {
         let message = match &command {
             b"version\0\0\0\0\0" => {
                 NetworkMessage::Version(VersionMessage::deserialize(payload_bytes)?)
-            },
+            }
             b"verack\0\0\0\0\0\0" => NetworkMessage::Unimplemented,
             _ => NetworkMessage::Unimplemented,
         };

@@ -44,14 +44,13 @@ impl Peer {
                 let mut received_data = &buffer[..n];
                 let mut messages = vec![];
 
-                while received_data.len() > 0 {
+                while !received_data.is_empty() {
                     let (msg, rest) = MessageEnvelope::deserialize(received_data)?;
                     messages.push(msg);
                     received_data = rest;
                 }
 
                 println!("Received messages: {:#?}", messages);
-
             }
             Err(e) => {
                 eprintln!("Failed to read from stream: {}", e);

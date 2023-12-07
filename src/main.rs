@@ -1,7 +1,7 @@
 mod message;
 mod networking;
-use message::{NetworkAddress};
 use crate::networking::Peer;
+use message::NetworkAddress;
 use std::net::{IpAddr, Ipv4Addr};
 
 #[derive(Debug)]
@@ -25,7 +25,7 @@ async fn main() -> Result<(), Error> {
     .await
     .unwrap();
 
-    let _res = peer.init_handshake::<Config>().await?;
+    peer.init_handshake::<Config>().await?;
 
     Ok(())
 }

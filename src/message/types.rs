@@ -1,5 +1,5 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use crate::message::{Deserialize, Error, Serialize, Size};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 #[derive(Debug, Clone)]
 pub struct NetworkAddress {
@@ -10,7 +10,7 @@ pub struct NetworkAddress {
 
 impl Serialize for NetworkAddress {
     fn serialize(&self) -> Vec<u8> {
-         let mut payload = Vec::new();
+        let mut payload = Vec::new();
         // services is LE
         payload.extend(&self.services.to_le_bytes());
         payload.extend(&self.serialize_ip_address());
@@ -37,7 +37,6 @@ impl Deserialize for NetworkAddress {
 }
 
 impl NetworkAddress {
-
     /// The Bitcoin protocol uses IPv4-mapped IPv6 addresses for IPv4 connections
     fn serialize_ip_address(&self) -> [u8; 16] {
         match self.ip {
@@ -59,7 +58,7 @@ impl NetworkAddress {
             return Err(Error::DeserializeError("Invalid IP Address Length"));
         }
 
-        return match (ip_bytes[10], ip_bytes[11]) {
+        match (ip_bytes[10], ip_bytes[11]) {
             (0xff, 0xff) => {
                 // If bytes 10 and 11 are both 0xff, it's an IPv4-mapped IPv6 address
                 let ipv4_bytes = [ip_bytes[12], ip_bytes[13], ip_bytes[14], ip_bytes[15]];
@@ -69,7 +68,7 @@ impl NetworkAddress {
                 let ip_v6_bytes: [u8; 16] = ip_bytes[..].try_into()?;
                 Ok(IpAddr::V6(Ipv6Addr::from(ip_v6_bytes)))
             }
-        };
+        }
     }
 }
 

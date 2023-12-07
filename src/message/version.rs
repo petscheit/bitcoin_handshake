@@ -1,7 +1,7 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-use crate::{Error, NodeConfig};
-use crate::message::{Deserialize, Serialize, Size};
 use crate::message::types::NetworkAddress;
+use crate::message::{Deserialize, Serialize, Size};
+use crate::{Error, NodeConfig};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug)]
 pub struct VersionMessage {
@@ -17,7 +17,7 @@ pub struct VersionMessage {
 }
 
 impl Serialize for VersionMessage {
-     fn serialize(&self) -> Vec<u8> {
+    fn serialize(&self) -> Vec<u8> {
         let mut payload = Vec::with_capacity(Self::min_size() + self.user_agent.len());
         payload.extend(&self.version.to_le_bytes());
         payload.extend(&self.services.to_le_bytes());
@@ -34,7 +34,7 @@ impl Serialize for VersionMessage {
 }
 
 impl Deserialize for VersionMessage {
-     fn deserialize(data: &[u8]) -> Result<VersionMessage, Error> {
+    fn deserialize(data: &[u8]) -> Result<VersionMessage, Error> {
         let input_len = data.len();
 
         let (version_bytes, rest) = data.split_at(std::mem::size_of::<u32>());
@@ -49,7 +49,7 @@ impl Deserialize for VersionMessage {
         let user_agent_len = user_agent_len_bytes[0] as usize;
 
         // we now know the user agent length, so we can check the input length
-        if input_len != Self::min_size() + &user_agent_len {
+        if input_len != Self::min_size() + user_agent_len {
             return Err(Error::DeserializeError("Invalid byte input length"));
         }
 
