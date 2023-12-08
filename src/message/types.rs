@@ -22,7 +22,7 @@ impl Serialize for NetworkAddress {
 impl Deserialize for NetworkAddress {
     fn deserialize(data: &[u8]) -> Result<NetworkAddress, Error> {
         if data.len() < Self::min_size() {
-            return Err(Error::DeserializeError("Invalid Data Length"));
+            return Err(Error::InvalidInputLength);
         }
 
         let (services_bytes, rest) = data.split_at(8);
@@ -55,7 +55,7 @@ impl NetworkAddress {
 
     fn deserialize_ip_address(ip_bytes: &[u8]) -> Result<IpAddr, Error> {
         if ip_bytes.len() != 16 {
-            return Err(Error::DeserializeError("Invalid IP Address Length"));
+            return Err(Error::InvalidInputLength);
         }
 
         match (ip_bytes[10], ip_bytes[11]) {

@@ -1,8 +1,8 @@
-use crate::message::{MessageEnvelope, NetworkAddress, NetworkMessage, VersionMessage};
+use crate::message::{MessageEnvelope, NetworkAddress, NetworkMessage};
 use crate::{Error, Event, NodeConfig};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc};
+use tokio::sync::mpsc;
 
 #[derive(Debug)]
 pub struct TcpConnection {
@@ -54,7 +54,9 @@ impl TcpConnection {
                         match msg.message {
                             NetworkMessage::Version(version) => {
                                 // send received version to main thread
-                                tx.send(Event::SetVersion(peer_id.clone(), version)).await.expect("Thread messaging failed!");
+                                tx.send(Event::SetVersion(peer_id, version))
+                                    .await
+                                    .expect("Thread messaging failed!");
 
                                 // Respond with verack upon receiving a valid version message
                                 let verack_envelope =
@@ -79,7 +81,9 @@ impl TcpConnection {
             // Update peer status and notify once handshake is completed
             if received_verack && sent_verack && !peer_ready {
                 peer_ready = true;
-                tx.send(Event::PeerReady(peer_id.clone())).await.expect("Thread messaging failed!");
+                tx.send(Event::PeerReady(peer_id))
+                    .await
+                    .expect("Thread messaging failed!");
             }
         }
 

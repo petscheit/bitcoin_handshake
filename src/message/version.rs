@@ -50,7 +50,7 @@ impl Deserialize for VersionMessage {
 
         // we now know the user agent length, so we can check the input length
         if input_len != Self::min_size() + user_agent_len {
-            return Err(Error::DeserializeError("Invalid byte input length"));
+            return Err(Error::InvalidInputLength);
         }
 
         let (user_agent_bytes, rest) = rest.split_at(user_agent_len);

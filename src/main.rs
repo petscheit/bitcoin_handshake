@@ -3,25 +3,23 @@ mod networking;
 mod peer;
 
 use crate::message::VersionMessage;
-use message::NetworkAddress;
-use std::net::{IpAddr, Ipv4Addr};
-use tokio::sync::mpsc;
-use std::collections::HashMap;
 use crate::networking::TcpConnection;
 use crate::peer::Peer;
+use message::NetworkAddress;
+use std::collections::HashMap;
+use std::net::{IpAddr, Ipv4Addr};
+use tokio::sync::mpsc;
 
 #[derive(Debug)]
 pub enum Error {
     IOError(std::io::Error),
     SystemTime(std::time::SystemTimeError),
     ArrayError(std::array::TryFromSliceError),
-    TcpError(&'static str),
-    DeserializeError(&'static str),
     InvalidInputLength,
     InvalidChecksum,
     CantInitUnimplementedMessage,
     PeerDuplicate,
-    PeerNotFound
+    PeerNotFound,
 }
 
 #[derive(Debug)]
@@ -37,16 +35,17 @@ async fn main() -> Result<(), Error> {
     let (tx, mut rx) = mpsc::channel(32);
 
     // init peer
-    let mut peers = get_dummy_peers();
+    let peers = get_dummy_peers();
 
+    //for each peer initialize a TCP stream on a separate thread
     for peer in peers {
-        // run tcp stream processing in seperate thread
         let tx_clone = tx.clone();
         let mut peer_tcp = TcpConnection::new(&peer.addr_recv).await?;
         let msg = peer.construct_version_message::<Config>()?;
         let peer_id = peer.id();
+
+        // spawn the message handler on a separate thread, to keep the main thread unblocked
         tokio::spawn(async move {
-            // Handle the network communication and send events back to main loop
             peer_tcp
                 .handle_network_communication::<Config>(msg, peer_id, tx_clone)
                 .await?;
@@ -57,7 +56,7 @@ async fn main() -> Result<(), Error> {
         peer_tracker.add(peer)?;
     }
 
-    // handle paar messages
+    // handle messages from peers tcp stream
     loop {
         tokio::select! {
             message = rx.recv() => {
@@ -84,6 +83,7 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
+/// returns connection details for live bitcoin mainnet nodes
 fn get_dummy_peers() -> Vec<Peer> {
     vec![
         Peer::new(NetworkAddress {
@@ -146,44 +146,44 @@ impl From<std::array::TryFromSliceError> for Error {
 }
 
 trait PeerTrackerTrait {
-    fn add(&mut self, peer: Peer) -> Result<(), Error>;
-    fn add_version(&mut self, peer_id: [u8;32], version:VersionMessage) ->  Result<(), Error>;
-    fn set_ready(&mut self, peer_id: [u8; 32]) -> Result<(), Error>;
     fn new() -> Self;
+    fn add(&mut self, peer: Peer) -> Result<(), Error>;
+    fn add_version(&mut self, peer_id: [u8; 32], version: VersionMessage) -> Result<(), Error>;
+    fn set_ready(&mut self, peer_id: [u8; 32]) -> Result<(), Error>;
 }
 
 pub struct PeerTracker {
-    peers: HashMap<[u8; 32], Peer>
+    peers: HashMap<[u8; 32], Peer>,
 }
 
 impl PeerTrackerTrait for PeerTracker {
     fn new() -> Self {
         PeerTracker {
-            peers: HashMap::new()
+            peers: HashMap::new(),
         }
     }
 
     fn add(&mut self, peer: Peer) -> Result<(), Error> {
         if !&self.peers.contains_key(&peer.id()) {
-            &self.peers.insert(peer.id(), peer);
+            self.peers.insert(peer.id(), peer);
             Ok(())
         } else {
             Err(Error::PeerDuplicate)
         }
     }
 
-    fn set_ready(&mut self, peer_id: [u8; 32]) -> Result<(), Error> {
+    fn add_version(&mut self, peer_id: [u8; 32], version: VersionMessage) -> Result<(), Error> {
         if let Some(peer) = self.peers.get_mut(&peer_id) {
-            peer.ready = true;
+            peer.version = Some(version);
             Ok(())
         } else {
             Err(Error::PeerNotFound)
         }
     }
 
-    fn add_version(&mut self, peer_id: [u8;32], version: VersionMessage) -> Result<(), Error> {
-         if let Some(peer) = self.peers.get_mut(&peer_id) {
-            peer.version = Some(version);
+    fn set_ready(&mut self, peer_id: [u8; 32]) -> Result<(), Error> {
+        if let Some(peer) = self.peers.get_mut(&peer_id) {
+            peer.ready = true;
             Ok(())
         } else {
             Err(Error::PeerNotFound)

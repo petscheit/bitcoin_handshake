@@ -1,7 +1,7 @@
-use std::net::{IpAddr, Ipv4Addr};
-use crate::{Error, NodeConfig};
 use crate::message::{MessageEnvelope, NetworkAddress, NetworkMessage, Serialize, VersionMessage};
+use crate::{Error, NodeConfig};
 use sha2::{Digest, Sha256};
+use std::net::{IpAddr, Ipv4Addr};
 
 /// Representation of the a network peer
 #[derive(Debug)]
@@ -29,7 +29,10 @@ impl Peer {
 
     /// Constructs the version message sent during P2P handshake
     pub fn construct_version_message<T: NodeConfig>(&self) -> Result<MessageEnvelope, Error> {
-        Ok(MessageEnvelope::new::<T>(NetworkMessage::Version(VersionMessage::new::<T>(self.addr_recv.clone(), self.to_addr_from()?)?))?)
+        MessageEnvelope::new::<T>(NetworkMessage::Version(VersionMessage::new::<T>(
+            self.addr_recv.clone(),
+            self.to_addr_from()?,
+        )?))
     }
 
     /// Generate sender address params. It is not required to set these.
