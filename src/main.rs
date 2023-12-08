@@ -28,23 +28,25 @@ pub enum Event {
     SetVersion([u8; 32], VersionMessage),
 }
 
+/// The entry point of the application. Initializes and manages network communications.
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    // init memory for peer list
+    // Initialize the structure for tracking peers.
     let mut peer_tracker = PeerTracker::new();
+    // Create a message-passing channel for handling events.
     let (tx, mut rx) = mpsc::channel(32);
 
-    // init peer
+    // Create dummy peers for initial testing and setup.
     let peers = get_dummy_peers();
 
-    //for each peer initialize a TCP stream on a separate thread
+    // Iterate through each peer to set up TCP connections and message handling.
     for peer in peers {
         let tx_clone = tx.clone();
-        let mut peer_tcp = TcpConnection::new(&peer.addr_recv).await?;
+        let mut peer_tcp = TcpConnection::new(&peer.receiver_address).await?;
         let msg = peer.construct_version_message::<Config>()?;
         let peer_id = peer.id();
 
-        // spawn the message handler on a separate thread, to keep the main thread unblocked
+        // Spawn a new asynchronous task for each peer to handle network communication.
         tokio::spawn(async move {
             peer_tcp
                 .handle_network_communication::<Config>(msg, peer_id, tx_clone)
@@ -52,11 +54,11 @@ async fn main() -> Result<(), Error> {
             Ok::<(), Error>(())
         });
 
-        // add peer instance
+        // Add the peer to the peer tracker.
         peer_tracker.add(peer)?;
     }
 
-    // handle messages from peers tcp stream
+    // Continuously listen for and handle messages from the peer TCP streams.
     loop {
         tokio::select! {
             message = rx.recv() => {
@@ -66,24 +68,23 @@ async fn main() -> Result<(), Error> {
                             Event::PeerReady(peer_id) => {
                                 peer_tracker.set_ready(peer_id)?;
                                 println!("Handshake Successful: {:?}", peer_id)
-                                //  => Init other protocol operations, e.g req_blocks
                             }
                             Event::SetVersion(peer_id, version) => {
                                 peer_tracker.add_version(peer_id, version)?;
                             }
                         }
                     }
-                    None => break, // Channel has closed
+                    None => break, // Exit if the channel has closed
                 }
             }
-            // other async events...
+            // Additional asynchronous events can be handled here.
         }
     }
 
     Ok(())
 }
 
-/// returns connection details for live bitcoin mainnet nodes
+/// Generates a list of dummy peers for testing and initial setup.
 fn get_dummy_peers() -> Vec<Peer> {
     vec![
         Peer::new(NetworkAddress {
@@ -104,6 +105,7 @@ fn get_dummy_peers() -> Vec<Peer> {
     ]
 }
 
+/// Defines the configuration parameters for a node in the network.
 pub trait NodeConfig {
     /// protocol version number
     const VERSION: u32;
@@ -117,6 +119,7 @@ pub trait NodeConfig {
     const MAGIC: [u8; 4];
 }
 
+/// Default (mainnet) configuration for the node.
 struct Config;
 impl NodeConfig for Config {
     const VERSION: u32 = 70001;
@@ -145,13 +148,19 @@ impl From<std::array::TryFromSliceError> for Error {
     }
 }
 
+/// `PeerTrackerTrait` defines the operations that can be performed on a `PeerTracker`.
 trait PeerTrackerTrait {
+    /// Creates a new `PeerTracker` instance.
     fn new() -> Self;
+    /// Adds a new peer to the tracker.
     fn add(&mut self, peer: Peer) -> Result<(), Error>;
+    /// Add the `VersionMessage` to a stored peer
     fn add_version(&mut self, peer_id: [u8; 32], version: VersionMessage) -> Result<(), Error>;
+    /// Sets a peer to ready
     fn set_ready(&mut self, peer_id: [u8; 32]) -> Result<(), Error>;
 }
 
+/// `PeerTracker` manages the state and information of all connected peers in the network.
 pub struct PeerTracker {
     peers: HashMap<[u8; 32], Peer>,
 }
@@ -173,20 +182,14 @@ impl PeerTrackerTrait for PeerTracker {
     }
 
     fn add_version(&mut self, peer_id: [u8; 32], version: VersionMessage) -> Result<(), Error> {
-        if let Some(peer) = self.peers.get_mut(&peer_id) {
-            peer.version = Some(version);
-            Ok(())
-        } else {
-            Err(Error::PeerNotFound)
-        }
+        let peer = self.peers.get_mut(&peer_id).ok_or(Error::PeerNotFound)?;
+        peer.version = Some(version);
+        Ok(())
     }
 
     fn set_ready(&mut self, peer_id: [u8; 32]) -> Result<(), Error> {
-        if let Some(peer) = self.peers.get_mut(&peer_id) {
-            peer.ready = true;
-            Ok(())
-        } else {
-            Err(Error::PeerNotFound)
-        }
+        let peer = self.peers.get_mut(&peer_id).ok_or(Error::PeerNotFound)?;
+        peer.ready = true;
+        Ok(())
     }
 }

@@ -1,25 +1,42 @@
 use crate::message::{Deserialize, Error, Serialize, Size};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
+/// Represents a network address in the context of the Bitcoin protocol,
+/// including service flags, IP address, and port number.
 #[derive(Debug, Clone)]
 pub struct NetworkAddress {
+    /// Service flags indicating the services supported by the node.
     pub(crate) services: u64,
+    /// IP address of the node (IPv4 or IPv6).
     pub(crate) ip: IpAddr,
+    /// Port number the node is listening on.
     pub(crate) port: u16,
 }
 
 impl Serialize for NetworkAddress {
+    /// Serializes the `NetworkAddress` into a byte vector.
+    ///
+    /// # Returns
+    /// A vector of bytes representing the serialized `NetworkAddress`.
     fn serialize(&self) -> Vec<u8> {
         let mut payload = Vec::new();
-        // services is LE
+        // Serialize services as little-endian bytes
         payload.extend(&self.services.to_le_bytes());
         payload.extend(&self.serialize_ip_address());
+        // Serialize the port as big-endian bytes. This is a special case
         payload.extend(&self.port.to_be_bytes());
         payload
     }
 }
 
 impl Deserialize for NetworkAddress {
+    /// Deserializes a byte slice into a `NetworkAddress`.
+    ///
+    /// # Arguments
+    /// * `data` - The byte slice to deserialize.
+    ///
+    /// # Returns
+    /// A result containing the deserialized `NetworkAddress` or an `Error`.
     fn deserialize(data: &[u8]) -> Result<NetworkAddress, Error> {
         if data.len() < Self::min_size() {
             return Err(Error::InvalidInputLength);
@@ -37,7 +54,11 @@ impl Deserialize for NetworkAddress {
 }
 
 impl NetworkAddress {
-    /// The Bitcoin protocol uses IPv4-mapped IPv6 addresses for IPv4 connections
+    /// Serializes the IP address part of `NetworkAddress`.
+    /// For IPv4 addresses, it converts them into IPv4-mapped IPv6 addresses.
+    ///
+    /// # Returns
+    /// A 16-byte array representing the serialized IP address.
     fn serialize_ip_address(&self) -> [u8; 16] {
         match self.ip {
             IpAddr::V4(ipv4) => {
@@ -53,6 +74,13 @@ impl NetworkAddress {
         }
     }
 
+    /// Deserializes a 16-byte slice into an `IpAddr`.
+    ///
+    /// # Arguments
+    /// * `ip_bytes` - The byte slice representing the IP address.
+    ///
+    /// # Returns
+    /// A result containing the deserialized `IpAddr` or an `Error`.
     fn deserialize_ip_address(ip_bytes: &[u8]) -> Result<IpAddr, Error> {
         if ip_bytes.len() != 16 {
             return Err(Error::InvalidInputLength);

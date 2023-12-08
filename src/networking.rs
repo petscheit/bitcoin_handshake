@@ -4,29 +4,35 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
+/// Represents a TCP connection to a peer in the network.
 #[derive(Debug)]
 pub struct TcpConnection {
+    // TcpStream for communication with the peer.
     pub(crate) stream: TcpStream,
 }
 
 impl TcpConnection {
-    /// Connect to a peer via TcpStream
+    /// Establishes a new TCP connection to a specified network address.
+    ///
+    /// # Arguments
+    /// * `address` - The network address of the peer to connect to.
+    ///
+    /// # Returns
+    /// A result containing the new `TcpConnection` or an `Error`.
     pub(crate) async fn new(address: &NetworkAddress) -> Result<Self, Error> {
         let stream = TcpStream::connect(&format!("{}:{}", &address.ip, &address.port)).await?;
         Ok(TcpConnection { stream })
     }
 
+    /// Handles the network communication over the TCP connection.
     ///
-    /// This function continuously reads data from the connection, deserializes incoming messages,
-    /// and performs appropriate actions based on the message type. It handles version and verack
-    /// messages, sets the peer's version, and updates the active status of the peer once the
-    /// handshake is completed. The function runs in a loop and only returns in case of an error.
+    /// This function manages the sending of the initial version message,
+    /// and the processing of incoming messages.
     ///
-    /// # Type Parameters
-    /// - `T`: A type that implements the `NodeConfig` trait, used for message creation.
-    ///
-    /// # Errors
-    /// Returns an `Error` if there are issues with reading from the connection or deserializing messages.
+    /// # Arguments
+    /// * `version_message` - The initial version message to send.
+    /// * `peer_id` - The identifier for the peer.
+    /// * `tx` - A sender for sending events to the main thread.
     pub async fn handle_network_communication<T: NodeConfig>(
         &mut self,
         version_message: MessageEnvelope,
@@ -36,12 +42,13 @@ impl TcpConnection {
         // Send the initial version message to the peer
         self.stream.write_all(&version_message.serialize()).await?;
 
+        // Flags to track the status of version acknowledgement
         let mut received_verack = false;
         let mut sent_verack = false;
         let mut peer_ready = false;
 
         loop {
-            // Buffer to store incoming data
+            // Buffer for storing incoming data from the peer
             let mut buffer = [0; 1024];
             // Read data from the stream
             match self.stream.read(&mut buffer).await {
@@ -52,8 +59,9 @@ impl TcpConnection {
                     while !received_data.is_empty() {
                         let (msg, rest) = MessageEnvelope::deserialize(received_data)?;
                         match msg.message {
+                            // Handle specific network messages
                             NetworkMessage::Version(version) => {
-                                // send received version to main thread
+                                // Send received version to main thread
                                 tx.send(Event::SetVersion(peer_id, version))
                                     .await
                                     .expect("Thread messaging failed!");
@@ -74,7 +82,8 @@ impl TcpConnection {
                     }
                 }
                 Err(e) => {
-                    return Err(e.into()); // Return error if reading fails
+                    // Return an error if reading from the stream fails
+                    return Err(e.into());
                 }
             }
 

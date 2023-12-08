@@ -3,21 +3,23 @@ use crate::message::{Deserialize, Serialize, Size};
 use crate::{Error, NodeConfig};
 use sha2::{Digest, Sha256};
 
-/// The generic wrapper used to send messages to other nodes
+/// Represents a generic message envelope used for network communication.
+/// This envelope wraps network messages with additional metadata for transmission.
 #[derive(Debug)]
 pub struct MessageEnvelope {
-    /// Identifier of network
+    /// Magic bytes to identify the network.
     magic: [u8; 4],
-    /// Command name, null padded
+    /// Command name, right-padded with null bytes.
     pub(crate) command: [u8; 12],
-    /// Length of payload
+    /// Size of the payload in bytes.
     payload_size: u32,
-    /// First 4 bytes of 2xsha256 of payload
+    /// Checksum for integrity verification, derived from the payload.
     checksum: [u8; 4],
-    /// Serialized command data
+    /// The actual network message payload.
     pub message: NetworkMessage,
 }
 
+/// Enum representing different types of network messages.
 #[derive(Debug)]
 pub enum NetworkMessage {
     Version(VersionMessage),
@@ -26,6 +28,13 @@ pub enum NetworkMessage {
 }
 
 impl MessageEnvelope {
+    /// Creates a new message envelope for a given network message.
+    ///
+    /// # Arguments
+    /// * `message` - The network message to be wrapped in the envelope.
+    ///
+    /// # Returns
+    /// A result containing the new `MessageEnvelope` or an `Error`.
     pub fn new<T: NodeConfig>(message: NetworkMessage) -> Result<MessageEnvelope, Error> {
         let (command, payload) = match &message {
             NetworkMessage::Version(payload) => ("version", payload.serialize()),
@@ -41,6 +50,11 @@ impl MessageEnvelope {
             message,
         })
     }
+
+    /// Serializes the message envelope into a byte vector for transmission.
+    ///
+    /// # Returns
+    /// A vector of bytes representing the serialized message envelope.
     pub fn serialize(&self) -> Vec<u8> {
         let payload = match &self.message {
             NetworkMessage::Version(payload) => payload.serialize(),
@@ -57,7 +71,15 @@ impl MessageEnvelope {
         envelope
     }
 
-    /// Deserializes the next MessageEnvelope from a byte array. Returns the remaining bytes as rest
+    /// Deserializes a byte array into a `MessageEnvelope`, returning the envelope
+    /// and any remaining bytes.
+    ///
+    /// # Arguments
+    /// * `data` - The byte array to deserialize.
+    ///
+    /// # Returns
+    /// A result containing the deserialized `MessageEnvelope` and any remaining bytes,
+    /// or an `Error` if deserialization fails.
     pub fn deserialize(data: &[u8]) -> Result<(MessageEnvelope, &[u8]), Error> {
         let input_len = data.len();
 
@@ -108,7 +130,13 @@ impl MessageEnvelope {
         ))
     }
 
+    /// Generates a fixed-length command byte array from a string command.
     ///
+    /// # Arguments
+    /// * `name` - The command name to convert into bytes.
+    ///
+    /// # Returns
+    /// A 12-byte array representing the command.
     fn generate_command_bytes(name: &str) -> [u8; 12] {
         // fixed length, with RHS passing -> LE
         let mut command = [0; 12];
@@ -119,6 +147,13 @@ impl MessageEnvelope {
         command
     }
 
+    /// Generates a checksum for a given message payload.
+    ///
+    /// # Arguments
+    /// * `msg` - The message payload to checksum.
+    ///
+    /// # Returns
+    /// A 4-byte array representing the checksum.
     fn generate_checksum(msg: &[u8]) -> [u8; 4] {
         const CHECKSUM_SIZE: usize = 4;
 
