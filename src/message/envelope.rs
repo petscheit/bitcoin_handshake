@@ -30,7 +30,7 @@ impl MessageEnvelope {
         let (command, payload) = match &message {
             NetworkMessage::Version(payload) => ("version", payload.serialize()),
             NetworkMessage::Verack => ("verack", vec![]),
-            NetworkMessage::Unimplemented => return Err(Error::CantInitUnimplementedMessage)
+            NetworkMessage::Unimplemented => return Err(Error::CantInitUnimplementedMessage),
         };
 
         Ok(MessageEnvelope {
@@ -92,9 +92,7 @@ impl MessageEnvelope {
             b"version\0\0\0\0\0" => {
                 NetworkMessage::Version(VersionMessage::deserialize(payload_bytes)?)
             }
-            b"verack\0\0\0\0\0\0" => {
-                NetworkMessage::Verack
-            },
+            b"verack\0\0\0\0\0\0" => NetworkMessage::Verack,
             _ => NetworkMessage::Unimplemented,
         };
 

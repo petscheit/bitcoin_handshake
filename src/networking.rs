@@ -1,89 +1,88 @@
 use crate::message::{MessageEnvelope, NetworkAddress, NetworkMessage, VersionMessage};
-use crate::{Error, NodeConfig};
+use crate::{Error, Event, NodeConfig};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tokio::sync::{mpsc};
 
 #[derive(Debug)]
-pub(crate) struct Peer {
-    pub addr_recv: NetworkAddress,
-    pub connection: TcpStream,
-    pub version: Option<VersionMessage>,
-    pub received_verack: bool,
-    pub sent_verack: bool,
+pub struct TcpConnection {
+    pub(crate) stream: TcpStream,
 }
 
-impl Peer {
+impl TcpConnection {
     /// Connect to a peer via TcpStream
-    pub(crate) async fn connect(address: NetworkAddress) -> Result<Self, Error> {
-        let connection = TcpStream::connect(&format!("{}:{}", &address.ip, &address.port)).await?;
-
-        Ok(Peer {
-            addr_recv: address,
-            connection,
-            version: None,
-            received_verack: false,
-            sent_verack: false,
-        })
+    pub(crate) async fn new(address: &NetworkAddress) -> Result<Self, Error> {
+        let stream = TcpStream::connect(&format!("{}:{}", &address.ip, &address.port)).await?;
+        Ok(TcpConnection { stream })
     }
 
-    /// Initialize the handshake with a peer
-    pub async fn init_handshake<T: NodeConfig>(&mut self) -> Result<(), Error> {
-        let version_msg = VersionMessage::new::<T>(self.addr_recv.clone(), self.to_addr_from()?)?;
-        let envelope = MessageEnvelope::new::<T>(NetworkMessage::Version(version_msg))?;
-        self.connection
-            .write_all(&envelope.serialize())
-            .await
-            .unwrap();
+    ///
+    /// This function continuously reads data from the connection, deserializes incoming messages,
+    /// and performs appropriate actions based on the message type. It handles version and verack
+    /// messages, sets the peer's version, and updates the active status of the peer once the
+    /// handshake is completed. The function runs in a loop and only returns in case of an error.
+    ///
+    /// # Type Parameters
+    /// - `T`: A type that implements the `NodeConfig` trait, used for message creation.
+    ///
+    /// # Errors
+    /// Returns an `Error` if there are issues with reading from the connection or deserializing messages.
+    pub async fn handle_network_communication<T: NodeConfig>(
+        &mut self,
+        version_message: MessageEnvelope,
+        peer_id: [u8; 32],
+        tx: mpsc::Sender<Event>,
+    ) -> Result<(), Error> {
+        // Send the initial version message to the peer
+        self.stream.write_all(&version_message.serialize()).await?;
 
-        // Buffer to store the data
-        let mut buffer = [0; 1024];
+        let mut received_verack = false;
+        let mut sent_verack = false;
+        let mut peer_ready = false;
 
-        // Read data into the buffer in a non-blocking way
-        match self.connection.read(&mut buffer).await {
-            Ok(n) => {
-                if n == 0 {
-                    println!("Connection was closed");
-                    // Connection was closed
-                    return Ok(());
-                }
-                let mut received_data = &buffer[..n];
+        loop {
+            // Buffer to store incoming data
+            let mut buffer = [0; 1024];
+            // Read data from the stream
+            match self.stream.read(&mut buffer).await {
+                Ok(n) => {
+                    let mut received_data = &buffer[..n];
 
-                while !received_data.is_empty() {
-                    let (msg, rest) = MessageEnvelope::deserialize(received_data)?;
-                    match msg.message {
-                        NetworkMessage::Version(version) => {
-                            self.version = Some(version);
-                            // respond with verack when receiving valid version
-                            let verack_envelope = MessageEnvelope::new::<T>(NetworkMessage::Verack)?;
-                            self.connection
-                                .write_all(&verack_envelope.serialize())
-                                .await?;
-                            self.sent_verack = true;
+                    // Process each received message
+                    while !received_data.is_empty() {
+                        let (msg, rest) = MessageEnvelope::deserialize(received_data)?;
+                        match msg.message {
+                            NetworkMessage::Version(version) => {
+                                // send received version to main thread
+                                tx.send(Event::SetVersion(peer_id.clone(), version)).await.expect("Thread messaging failed!");
+
+                                // Respond with verack upon receiving a valid version message
+                                let verack_envelope =
+                                    MessageEnvelope::new::<T>(NetworkMessage::Verack)?;
+                                self.stream.write_all(&verack_envelope.serialize()).await?;
+
+                                sent_verack = true;
+                            }
+                            NetworkMessage::Verack => {
+                                received_verack = true;
+                            }
+                            NetworkMessage::Unimplemented => (), // Handle unimplemented messages
                         }
-                        NetworkMessage::Verack => {
-                            self.received_verack = true;
-                        }
-                        NetworkMessage::Unimplemented => ()
+                        received_data = rest;
                     }
-                    received_data = rest;
+                }
+                Err(e) => {
+                    return Err(e.into()); // Return error if reading fails
                 }
             }
-            Err(e) => {
-                return Err(e.into())
+
+            // Update peer status and notify once handshake is completed
+            if received_verack && sent_verack && !peer_ready {
+                peer_ready = true;
+                tx.send(Event::PeerReady(peer_id.clone())).await.expect("Thread messaging failed!");
             }
         }
 
         Ok(())
-    }
-
-    pub fn to_addr_from(&self) -> Result<NetworkAddress, Error> {
-        let ip = self.connection.local_addr()?.ip();
-        let port = self.connection.local_addr()?.port();
-
-        Ok(NetworkAddress {
-            services: 0, // we hardcode the services to 0 for now
-            ip,
-            port,
-        })
     }
 }
