@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 
 /// Represents a generic message envelope used for network communication.
 /// This envelope wraps network messages with additional metadata for transmission.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MessageEnvelope {
     /// Magic bytes to identify the network.
     magic: [u8; 4],
@@ -224,6 +224,28 @@ mod tests {
         assert_eq!(deserialized_envelope.checksum, original_envelop.checksum);
         assert_eq!(deserialized_envelope.message, network_message);
 
+    }
+
+    #[test]
+    fn reject_invalid_message_envelope() {
+        let original_msg = VersionMessage::new::<Config>(Default::default(), Default::default()).unwrap();
+        let network_message = NetworkMessage::Version(original_msg.clone());
+
+        let original_envelop = MessageEnvelope::new::<Config>(network_message).unwrap();
+        let invalid_checksum_envelope = MessageEnvelope {
+            checksum: [0; 4],
+            ..original_envelop.clone()
+        };
+
+        let invalid_payload_length_envelope = MessageEnvelope {
+            payload_size: 0,
+            ..original_envelop.clone()
+        };
+        let invalid_checksum = invalid_checksum_envelope.serialize();
+        assert!(MessageEnvelope::deserialize(&invalid_checksum).is_err());
+
+        let invalid_payload_length = invalid_payload_length_envelope.serialize();
+        assert!(MessageEnvelope::deserialize(&invalid_payload_length).is_err());
     }
 
     #[test]
