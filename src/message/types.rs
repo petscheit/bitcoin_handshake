@@ -3,7 +3,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 /// Represents a network address in the context of the Bitcoin protocol,
 /// including service flags, IP address, and port number.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NetworkAddress {
     /// Service flags indicating the services supported by the node.
     pub(crate) services: u64,
@@ -103,5 +103,53 @@ impl NetworkAddress {
 impl Size for NetworkAddress {
     fn min_size() -> usize {
         std::mem::size_of::<u64>() + std::mem::size_of::<[u8; 16]>() + std::mem::size_of::<u16>()
+    }
+}
+
+impl Default for NetworkAddress {
+    fn default() -> Self {
+        NetworkAddress {
+            services: 0,
+            ip: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), // or use IpAddr::V6(Ipv6Addr::UNSPECIFIED) for IPv6
+            port: 0,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_serialize_deserialize_ipv4() {
+        let original_address = NetworkAddress {
+            services: 0x01020304,
+            ip: IpAddr::V4(Ipv4Addr::from_str("192.168.1.1").unwrap()),
+            port: 8080,
+        };
+
+        let serialized_data = original_address.serialize();
+        let deserialized_address = NetworkAddress::deserialize(&serialized_data).unwrap();
+
+        assert_eq!(deserialized_address.services, original_address.services);
+        assert_eq!(deserialized_address.ip, original_address.ip);
+        assert_eq!(deserialized_address.port, original_address.port);
+    }
+
+    #[test]
+    fn test_serialize_deserialize_ipv6() {
+        let original_address = NetworkAddress {
+            services: 0x01020304,
+            ip: IpAddr::V6(Ipv6Addr::from_str("2001:0db8:85a3::1").unwrap()),
+            port: 8080,
+        };
+
+        let serialized_data = original_address.serialize();
+        let deserialized_address = NetworkAddress::deserialize(&serialized_data).unwrap();
+
+        assert_eq!(deserialized_address.services, original_address.services);
+        assert_eq!(deserialized_address.ip, original_address.ip);
+        assert_eq!(deserialized_address.port, original_address.port);
     }
 }

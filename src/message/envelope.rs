@@ -20,7 +20,7 @@ pub struct MessageEnvelope {
 }
 
 /// Enum representing different types of network messages.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum NetworkMessage {
     Version(VersionMessage),
     Verack,
@@ -142,6 +142,9 @@ impl MessageEnvelope {
         let mut command = [0; 12];
         let bytes = name.as_bytes();
         for (i, byte) in bytes.iter().enumerate() {
+            if i >= command.len() {
+                break;
+            }
             command[i] = *byte;
         }
         command
@@ -177,4 +180,79 @@ impl Size for MessageEnvelope {
     fn min_size() -> usize {
         4 + 12 + 4 + 4
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Config;
+
+    #[test]
+    fn test_serialize_deserialize_version_message() {
+        let original_msg = VersionMessage::new::<Config>(Default::default(), Default::default()).unwrap();
+        let network_message = NetworkMessage::Version(original_msg.clone());
+
+        let original_envelop = MessageEnvelope::new::<Config>(network_message).unwrap();
+        let serialized_data = original_envelop.serialize();
+
+        let (deserialized_envelope, _) = MessageEnvelope::deserialize(&serialized_data).unwrap();
+
+        assert_eq!(deserialized_envelope.magic, original_envelop.magic);
+        assert_eq!(deserialized_envelope.command, original_envelop.command);
+        assert_eq!(deserialized_envelope.payload_size, original_envelop.payload_size);
+        assert_eq!(deserialized_envelope.checksum, original_envelop.checksum);
+
+        if let NetworkMessage::Version(deserialized_msg) = deserialized_envelope.message {
+            assert_eq!(deserialized_msg, original_msg);
+        } else {
+            panic!("Expected a Version message");
+        }
+    }
+
+    #[test]
+    fn test_serialize_deserialize_verack_message() {
+        let network_message = NetworkMessage::Verack;
+
+        let original_envelop = MessageEnvelope::new::<Config>(network_message.clone()).unwrap();
+        let serialized_data = original_envelop.serialize();
+
+        let (deserialized_envelope, _) = MessageEnvelope::deserialize(&serialized_data).unwrap();
+
+        assert_eq!(deserialized_envelope.magic, original_envelop.magic);
+        assert_eq!(deserialized_envelope.command, original_envelop.command);
+        assert_eq!(deserialized_envelope.payload_size, original_envelop.payload_size);
+        assert_eq!(deserialized_envelope.checksum, original_envelop.checksum);
+        assert_eq!(deserialized_envelope.message, network_message);
+
+    }
+
+    #[test]
+    fn test_generate_command_bytes() {
+        // Test with a command shorter than 12 characters
+        let short_command = "verack";
+        let expected_short = [118, 101, 114, 97, 99, 107, 0, 0, 0, 0, 0, 0]; // "verack" followed by null bytes
+        assert_eq!(MessageEnvelope::generate_command_bytes(short_command), expected_short);
+
+        // Test with a command exactly 12 characters long
+        let exact_command = "exactlength!";
+        let expected_exact = [101, 120, 97, 99, 116, 108, 101, 110, 103, 116, 104, 33]; // "exactlength!"
+        assert_eq!(MessageEnvelope::generate_command_bytes(exact_command), expected_exact);
+
+        // Test with a command longer than 12 characters
+        let long_command = "toolongcommand";
+        let expected_long = [116, 111, 111, 108, 111, 110, 103, 99, 111, 109, 109, 97]; // Truncated to "toolongcomm"
+        assert_eq!(MessageEnvelope::generate_command_bytes(long_command), expected_long);
+    }
+
+    #[test]
+    fn test_generate_checksum() {
+        let mut msg = VersionMessage::new::<Config>(Default::default(), Default::default()).unwrap();
+        // Set the timestamp and nonce to 0 so the checksum is predictable
+        msg.nonce = 0;
+        msg.timestamp = 0;
+        let expected_checksum = [255, 121, 81, 110];
+        assert_eq!(MessageEnvelope::generate_checksum(&msg.serialize()), expected_checksum);
+    }
+
+
 }

@@ -95,7 +95,5 @@ impl TcpConnection {
                     .expect("Thread messaging failed!");
             }
         }
-
-        Ok(())
     }
 }

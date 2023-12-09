@@ -2,7 +2,6 @@
 use crate::message::{MessageEnvelope, NetworkAddress, NetworkMessage, Serialize, VersionMessage};
 use crate::{Error, NodeConfig};
 use sha2::{Digest, Sha256};
-use std::net::{IpAddr, Ipv4Addr};
 
 /// Represents a peer in the network.
 ///
@@ -57,20 +56,7 @@ impl Peer {
     pub fn construct_version_message<T: NodeConfig>(&self) -> Result<MessageEnvelope, Error> {
         MessageEnvelope::new::<T>(NetworkMessage::Version(VersionMessage::new::<T>(
             self.receiver_address.clone(),
-            self.sender_address()?,
+            Default::default(), // The sender address doesnt need to be set here
         )?))
-    }
-
-    /// Generates a network address representing the sender. Currently, this method
-    /// returns a dummy address, as sender information is not required.
-    ///
-    /// # Returns
-    /// A result containing a `NetworkAddress` or an `Error`.
-    pub fn sender_address(&self) -> Result<NetworkAddress, Error> {
-        Ok(NetworkAddress {
-            services: 0,
-            ip: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
-            port: 0,
-        })
     }
 }

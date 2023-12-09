@@ -5,26 +5,26 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Represents the `version` message in the Bitcoin protocol.
 /// It is used to relay information about the node when connecting to a peer.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VersionMessage {
     /// The protocol version of the sender.
-    version: u32,
+    pub(crate) version: u32,
     /// The services supported by the sender.
-    services: u64,
+    pub(crate) services: u64,
     /// The current timestamp of the sender.
-    timestamp: i64,
+    pub(crate) timestamp: i64,
     /// The network address of the receiver.
-    receiver_address: NetworkAddress,
+    pub(crate) receiver_address: NetworkAddress,
     /// The network address of the sender.
-    sender_address: NetworkAddress,
+    pub(crate) sender_address: NetworkAddress,
     /// A random nonce
-    nonce: u64,
+    pub(crate) nonce: u64,
     /// The user agent of the sender.
-    user_agent: String,
+    pub(crate) user_agent: String,
     /// The current block height of the sender.
-    start_height: i32,
+    pub(crate) start_height: i32,
     /// Whether the sender wants to be relayed to other nodes by the receiver.
-    relay: bool,
+    pub(crate) relay: bool,
 }
 
 impl Serialize for VersionMessage {
@@ -135,3 +135,51 @@ impl Size for VersionMessage {
         std::mem::size_of::<bool>()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+    use std::net::{IpAddr, Ipv4Addr};
+
+    #[test]
+    fn test_serialize_deserialize_version_message_ipv4() {
+        let receiver_address = NetworkAddress {
+            services: 1,
+            ip: IpAddr::V4(Ipv4Addr::from_str("192.168.1.1").unwrap()),
+            port: 8080,
+        };
+
+        let sender_address = NetworkAddress {
+            services: 2,
+            ip: IpAddr::V4(Ipv4Addr::from_str("192.168.1.2").unwrap()),
+            port: 8081,
+        };
+
+        let original_message = VersionMessage {
+            version: 70015,
+            services: 0x01020304,
+            timestamp: 1234567890,
+            receiver_address,
+            sender_address,
+            nonce: 9876543210,
+            user_agent: "/Satoshi:0.7.2/".to_string(),
+            start_height: 654321,
+            relay: true,
+        };
+
+        let serialized_data = original_message.serialize();
+        let deserialized_message = VersionMessage::deserialize(&serialized_data).unwrap();
+
+        assert_eq!(deserialized_message.version, original_message.version);
+        assert_eq!(deserialized_message.services, original_message.services);
+        assert_eq!(deserialized_message.timestamp, original_message.timestamp);
+        assert_eq!(deserialized_message.receiver_address, original_message.receiver_address);
+        assert_eq!(deserialized_message.sender_address, original_message.sender_address);
+        assert_eq!(deserialized_message.nonce, original_message.nonce);
+        assert_eq!(deserialized_message.user_agent, original_message.user_agent);
+        assert_eq!(deserialized_message.start_height, original_message.start_height);
+        assert_eq!(deserialized_message.relay, original_message.relay);
+    }
+}
+
